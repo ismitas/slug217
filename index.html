@@ -67,9 +67,29 @@ h3{margin:14px 0 4px;font-size:17px}.g{color:var(--ok)}textarea{font:inherit;col
 <label>Temperatura (°C)<input id="temp" inputmode="decimal"></label>
 <label>MOA por click<input id="clic" inputmode="decimal"></label>
 <label>Presión (hPa)<input id="pres" inputmode="decimal" placeholder="de altitud"></label>
-<label>Humedad (%)<input id="hr" inputmode="decimal" placeholder="seco"></label></details>
+<label>Humedad (%)<input id="hr" inputmode="decimal" placeholder="seco"></label>
+<div class="bt"><button class="s" onclick="aquiAhora()">📍 Altitud y presión aquí</button><button class="s" onclick="sinSenal()">Sin señal: presión desde altitud</button></div>
+<div class="small oAire" style="margin-top:4px"></div></details>
+<details id="dCero"><summary>Cambio de cero</summary>
+<p class="small" style="margin:0 0 6px">Para usar al llegar a una competencia: tiras a <span class="zC">50</span> yd para verificar, anotas cuánto se corrió el cero y, si tienes, la velocidad del cronógrafo. La app estima tu velocidad de hoy y rehace la curva para que vuelvas a dejar el cero en <span class="zC">50</span> yd.</p>
+<b class="small">1 · Aire de hoy</b>
+<div class="small" id="zAire" style="margin:2px 0 4px"></div>
+<div class="bt"><button class="s" onclick="aquiAhora()">📍 Altitud y presión aquí</button><button class="s" onclick="sinSenal()">Sin señal: desde altitud</button></div>
+<div class="small oAire" style="margin-top:4px"></div>
+<p class="small" style="margin:4px 0 8px">Temperatura y humedad: ponlas en «Arma, munición y aire» (de tu anemómetro).</p>
+<b class="small">2 · Cuánto se corrió el cero</b>
+<label>Para volver al centro corregí<span><input id="zMoa" inputmode="decimal" placeholder="0" style="width:74px"><select id="zU" style="min-width:0"><option>MOA</option><option>clicks</option></select></span></label>
+<label>Dirección<select id="zDir"><option value="ABAJO">↓ ABAJO (números crecen)</option><option value="ARRIBA">↑ ARRIBA</option></select></label>
+<div class="small">Mide el centro de un grupo de 3 a 5 tiros, no un tiro solo.</div>
+<b class="small" style="display:block;margin-top:8px">3 · Cronógrafo (opcional pero recomendado)</b>
+<label>Velocidad promedio (fps)<input id="zVel" inputmode="decimal" placeholder="—"></label>
+<label>N.º de tiros<input id="zN" inputmode="decimal" placeholder="5"></label>
+<label>Desviación estándar (fps)<input id="zSd" inputmode="decimal" placeholder="8"></label>
+<label>Velocidad con la que hiciste el cero en casa<input id="zRef" inputmode="decimal"></label>
+<button id="bCero" style="width:100%;margin-top:6px">Estimar velocidad de hoy</button>
+<div id="zOut" style="margin-top:8px"></div></details>
 <details><summary>Presión y altitud online</summary>
-<button id="bGps" style="width:100%">Aquí y ahora (GPS + internet)</button><div class="small" id="oGps" style="margin-top:4px"></div>
+<button id="bGps" style="width:100%">Aquí y ahora (GPS + internet)</button><div class="small oAire" id="oGps" style="margin-top:4px"></div>
 <h3>Preparar un lugar antes del match</h3>
 <label>Lugar<input id="lugar" style="width:64%;text-align:left" placeholder="Curicó  o  -34,98 -71,24"></label>
 <label>Fecha<input id="lfecha" type="date" style="width:64%"></label>
@@ -102,7 +122,7 @@ const num=s=>parseFloat(String(s).trim().replace(',','.'));
 const fmt=(x,d=1)=>x.toFixed(d).replace('.',',');
 function interp(x,xs,ys){if(x<=xs[0])return ys[0];if(x>=xs[xs.length-1])return ys[ys.length-1];let lo=0,hi=xs.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(xs[m]<=x)lo=m;else hi=m}const t=(x-xs[lo])/(xs[hi]-xs[lo]);return ys[lo]+t*(ys[hi]-ys[lo])}
 function atm(alt,t,p,hr){const T=t+273.15,P=p?p*100:101325*Math.pow(1-2.25577e-5*alt,5.25588),es=610.94*Math.exp(17.625*t/(t+243.04)),pv=Math.min(Math.max(hr,0),100)/100*es;return{rho:(P-pv)/(RA*T)+pv/(RV*T),a:Math.sqrt(1.4*RA*T/(1-.378*pv/P)),p:P}}
-function tray(mv,cero,sh,alt,tc,fcd,w0,pres,hr,dt=DT,xmaxYd=450){
+function tray(mv,cero,sh,alt,tc,fcd,w0,pres,hr,dt=DT,xmaxYd=450,angFix=null){
  const at=atm(alt,tc,pres,hr),cds=CD.map(c=>c*fcd),v0=mv*FPS,shm=sh/100,k=.5*at.rho*AREA/M;
  function vol(ang,xmax,w){const[wx,wz]=w;let vx=v0*Math.cos(ang),vy=v0*Math.sin(ang),vz=0,x=0,y=-shm,z=0,t=0,i=0;const X=[x],Y=[y],Z=[z],V=[v0],T=[t];
   const add=()=>{X.push(x);Y.push(y);Z.push(z);V.push(Math.hypot(vx,vy,vz));T.push(t)};
@@ -110,9 +130,9 @@ function tray(mv,cero,sh,alt,tc,fcd,w0,pres,hr,dt=DT,xmaxYd=450){
    const acc=k*vr*interp(vr/at.a,MACH,cds);vx-=acc*rx*dt;vy-=(acc*vy+G)*dt;vz-=acc*rz*dt;x+=vx*dt;y+=vy*dt;z+=vz*dt;t+=dt;if(++i%5===0)add()}
   add();return{X,Y,Z,V,T}}
  const xc=cero*YD;let lo=-.02,hi=.1,ang=0;
- for(let n=0;n<40;n++){ang=(lo+hi)/2;const s=vol(ang,xc+.05,[0,0]);if(interp(xc,s.X,s.Y)>0)hi=ang;else lo=ang}
+ if(angFix!==null)ang=angFix;else for(let n=0;n<40;n++){ang=(lo+hi)/2;const s=vol(ang,xc+.05,[0,0]);if(interp(xc,s.X,s.Y)>0)hi=ang;else lo=ang}
  const S=vol(ang,xmaxYd*YD+1,w0);
- return{rho:at.rho,p:at.p,alc:S.X[S.X.length-1],punto(d){const y=interp(d,S.X,S.Y),z=interp(d,S.X,S.Z),v=interp(d,S.X,S.V),t=interp(d,S.X,S.T);
+ return{ang,rho:at.rho,p:at.p,alc:S.X[S.X.length-1],punto(d){const y=interp(d,S.X,S.Y),z=interp(d,S.X,S.Z),v=interp(d,S.X,S.V),t=interp(d,S.X,S.T);
   return{y,v,t,e:.5*M*v*v,moa:Math.atan2(y,d)*10800/Math.PI,lat:Math.atan2(z,d)*10800/Math.PI}}}}
 function comp(vel,dir){const w=vel/3.6,th=dir*Math.PI/180;return[-w*Math.cos(th),-w*Math.sin(th)]}
 const spin=(t,d,der)=>{const m=Math.atan2(1.25*(SG+1.2)*Math.pow(t,1.83)*.0254,d)*10800/Math.PI;return der?m:-m};
@@ -178,7 +198,7 @@ function condFila(f){const d=num(f.distancia_yd),mv=num(f.vel_salida_fps),er=num
  const o=v=>{const x=num(v);return isFinite(x)?x:null},med=String(f.origen_presion||'').toLowerCase().startsWith('medida');
  return{d,mv,cero:o(f.cero_yd)??50,sh:o(f.altura_mira_cm)??5.5,alt:o(f.altitud_m)??1080,temp:o(f.temp_c)??20,pres:med?o(f.presion_hpa_usada):null,
   pu:o(f.presion_hpa_usada),hr:o(f.humedad_pct)||0,viento:o(f.viento_usado_kmh)||0,dir:((o(f.viento_desde_deg)??90)%360+360)%360,giro:f.giro_canon||'Derecha',
-  er,lr:o(f['lat_real_moa(+derecha)']),usar:String(f.usar??'1').trim()!=='0'}}
+  er,fh:String(f.fecha_hora||''),lr:o(f['lat_real_moa(+derecha)']),usar:String(f.usar??'1').trim()!=='0'}}
 function rasgos(c){const ratio=AJ.mv_efectiva_fps/AJ.mv_referencia_fps,f0=AJ.factor_cd,x=c.d*YD,xm=c.d+2,dt=AP.DT;
  const elev=(mv,f)=>-tray(mv*ratio,c.cero,c.sh,c.alt,c.temp,f,[0,0],c.pres,c.hr,dt,xm).punto(x).moa;
  const e0=elev(c.mv,f0),sv=(elev(c.mv+10,f0)-e0)/10,scd=elev(c.mv,f0*1.1)-e0,t0=tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,[0,0],c.pres,c.hr,dt,xm),p0=t0.punto(x);
@@ -210,7 +230,7 @@ function apActualizar(){try{const dv=[],dl=[];
  for(const f of REG){const c=condFila(f);if(!c||!c.usar||Math.abs(c.d-c.cero)<.5)continue;const r=apRasgos(c);dv.push([r,c]);if(c.lr!==null)dl.push([r,c])}
  const med=k=>{const v=dv.map(([,c])=>c[k]).filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:0};
  const m={temp:med('temp'),hr:med('hr'),pu:med('pu'),alt:med('alt')},res={m,nv:dv.length,nl:dl.length};
- AP.loc=dv.map(([r,c])=>({d:c.d,mv:c.mv,cero:c.cero,sh:c.sh,er:c.er,r0:c.er-r.eb,rl:c.er-r.eb}));
+ AP.loc=dv.map(([r,c])=>({fh:c.fh,d:c.d,mv:c.mv,cero:c.cero,sh:c.sh,er:c.er,r0:c.er-r.eb,rl:c.er-r.eb}));
  for(const[eje,defs,datos,yf]of[['v',DV,dv,(r,c)=>c.er-r.eb],['l',DL,dl,(r,c)=>c.lr-r.lb]]){
   if(datos.length<AP.MIN_MCO){res[eje]={ok:false,motivo:'faltan tiros (hay '+datos.length+', se necesitan '+AP.MIN_MCO+')'};continue}
   const y=datos.map(([r,c])=>yf(r,c)),{fin,X,desc}=apDiseno(defs,datos,m);
@@ -226,7 +246,7 @@ function apCorr(c,vk,dyd){if(!AP.listo||!$('apr').checked||!AP.res)return[0,0];c
 // Prioridad a mis tiros: lo que el modelo aun no explica en tus tiros (residuo) se suma segun la cercania en distancia.
 // Peso gaussiano por distancia; k0 = cuanto se confia en el modelo cuando hay pocos tiros cerca. Lejos de tus tiros -> no cambia nada.
 function apLocal(c,dyd){const mo=+$('prio').value;if(!mo||!AP.loc)return 0;const h=mo===2?Math.max(1,.02*dyd):Math.max(2,.06*dyd),k0=mo===2?.05:.3,useL=AP.listo&&$('apr').checked;
- let sw=0,sr=0;for(const p of AP.loc){if(Math.abs(p.mv-c.mv)>5||Math.abs(p.cero-c.cero)>.5||Math.abs(p.sh-c.sh)>.05)continue;const w=Math.exp(-.5*((p.d-dyd)/h)**2);if(w<1e-4)continue;sw+=w;sr+=w*(useL?p.rl:p.r0)}
+ let sw=0,sr=0;for(const p of AP.loc){if(p.fh<'2026-10-26'||Math.abs(p.cero-c.cero)>.5||Math.abs(p.sh-c.sh)>.05)continue;const w=Math.exp(-.5*((p.d-dyd)/h)**2)*Math.exp(-.5*((p.mv-c.mv)/20)**2);if(w<1e-4)continue;sw+=w;sr+=w*(useL?p.rl:p.r0)}
  return sw?sr/(sw+k0):0}
 function misTiros(c,dyd){if(!AP.loc)return'';const v=AP.loc.filter(p=>Math.abs(p.d-dyd)<=1&&Math.abs(p.mv-c.mv)<=5&&Math.abs(p.cero-c.cero)<=.5);
  return v.length?' · tu dato: '+v.map(p=>fmt(Math.abs(p.er),2)+(p.er>=0?' ↓':' ↑')).join(', '):''}
@@ -288,7 +308,7 @@ function compute(){
   if((c.viento||c.peak)&&Math.abs(c.fv-1)<1e-9)av+=(av?' ':'')+'Viento sin calibrar (factor 1,00).';
   $('oAviso').textContent=av;$('oApr').textContent=apTexto()+(AP.listo&&(r.ae||r.al)?' · aplicado aquí: caída '+fmt(r.ae,2)+' · lateral '+fmt(r.al,2)+' MOA':'');U={c,r,rp,rb,bj,bEst,dyd,rho:T.t0.rho,p:T.t0.p/100}
  }catch(e){U=null;$('oAviso').textContent='Revisa los datos: deben ser números.';$('mt').innerHTML=''}
- updPred();match();ls.set('slug217_cfg',cfg())}
+ updPred();match();zAire();ls.set('slug217_cfg',cfg())}
 function predLat(){if(!U)return null;if($('uso').value==='Peak')return U.rp?[U.rp,U.c.peak,'Peak']:null;if($('uso').value==='Baja')return U.rb?[U.rb,U.bj,'Baja']:null;return[U.r,U.c.viento,U.c.viento?'Media':'Sin viento']}
 function updPred(){if(!U){$('pE').textContent='–';$('pL').textContent='–';return}
  $('pE').textContent=fmt(alClick(U.r.vert,U.c.clic),2)+' MOA '+(U.r.vert<0?'ABAJO':'ARRIBA');const p=predLat();$('pL').textContent=p?latTxt(p[0].lat,U.c.clic):'sin ese viento'}
@@ -365,13 +385,13 @@ function lugGet(){return ls.get('slug217_lugares')||[]}
 function lugPintar(sel){const L=lugGet();$('lugares').innerHTML=L.length?L.map(x=>'<option value="'+x.id+'">'+lugTxt(x).replace(/</g,'')+'</option>').join(''):'<option value="">(ninguno)</option>';if(sel)$('lugares').value=sel}
 function lugAdd(L){const A=lugGet().filter(x=>!(x.nombre===L.nombre&&x.fecha===L.fecha&&x.hora===L.hora));A.unshift(L);ls.set('slug217_lugares',A.slice(0,20));lugPintar(L.id)}
 function ponAire(elev,pres){$('alt').value=fmt(elev,0);$('pres').value=fmt(pres,1);compute()}
-function aquiAhora(){const o=$('oGps');if(!navigator.geolocation){o.textContent='Este navegador no da la ubicación.';return}o.textContent='Buscando ubicación…';
+function aquiAhora(){const o={set textContent(t){document.querySelectorAll('.oAire').forEach(e=>e.textContent=t)},set innerHTML(t){document.querySelectorAll('.oAire').forEach(e=>e.innerHTML=t)}};if(!navigator.geolocation){o.textContent='Este navegador no da la ubicación.';return}o.textContent='Buscando ubicación…';
  navigator.geolocation.getCurrentPosition(async p=>{const la=p.coords.latitude,lo=p.coords.longitude;o.textContent='Consultando presión…';
   try{const j=await getJ(OM+'?latitude='+la.toFixed(4)+'&longitude='+lo.toFixed(4)+'&current='+OV+'&wind_speed_unit=kmh&timezone=auto'),c=j.current;
    ponAire(j.elevation,c.surface_pressure);const t=c.time||'';
    lugAdd({id:Date.now(),nombre:'GPS '+fmt(la,3)+' '+fmt(lo,3),fecha:t.slice(0,10)||hoy(),hora:t.slice(11,16)||'',elev:j.elevation,pres:c.surface_pressure,temp:c.temperature_2m,hr:c.relative_humidity_2m,ws:c.wind_speed_10m,wg:c.wind_gusts_10m,wd:c.wind_direction_10m});
    o.innerHTML='Puesto: <b>'+fmt(j.elevation,0)+' m</b> y <b>'+fmt(c.surface_pressure,1)+' hPa</b> (Open-Meteo, '+t.slice(11,16)+')'+(p.coords.altitude!=null?' · GPS del teléfono: '+fmt(p.coords.altitude,0)+' m':'')+'.<br>Referencia del modelo: '+fmt(c.temperature_2m,0)+' °C · '+fmt(c.relative_humidity_2m,0)+' % · viento '+fmt(c.wind_speed_10m,0)+' (ráfagas '+fmt(c.wind_gusts_10m,0)+') km/h del '+rumbo(c.wind_direction_10m)+'. Para tirar usa tu anemómetro.'}
-  catch(e){o.textContent='No pude traer el clima ('+e.message+'). Usa un lugar guardado o escribe la presión.'}},
+  catch(e){if(p.coords.altitude!=null){$('alt').value=fmt(p.coords.altitude,0);$('pres').value='';compute();o.innerHTML='No pude conectarme ('+e.message+'). Usé la <b>altitud del GPS: '+fmt(p.coords.altitude,0)+' m</b> (±'+fmt(p.coords.altitudeAccuracy||15,0)+' m) y la presión se estima desde ella: <b>≈ '+fmt(atm(p.coords.altitude,readT(),null,0).p/100,0)+' hPa</b>. Si preparaste el lugar con señal, usa el guardado: es más exacto.'}else o.textContent='No pude traer el clima ('+e.message+') y el GPS no dio altitud. Escribe la altitud y toca «Sin señal».'}},
   e=>{o.textContent='Sin permiso de ubicación o sin GPS ('+e.message+'). Permite la ubicación para Safari o usa «Preparar un lugar».'},{enableHighAccuracy:true,timeout:20000,maximumAge:60000})}
 async function preparar(){const o=$('oPrep'),q=$('lugar').value.trim(),f=$('lfecha').value||hoy(),h=($('lhora').value||'10:00').slice(0,5);if(!q){o.textContent='Escribe un lugar o coordenadas.';return}
  o.textContent='Buscando…';try{let la,lo,nom;const m=q.match(/^\s*(-?\d+(?:[.,]\d+)?)[\s;]+(-?\d+(?:[.,]\d+)?)\s*$/);
@@ -387,12 +407,56 @@ async function preparar(){const o=$('oPrep'),q=$('lugar').value.trim(),f=$('lfec
  catch(e){o.textContent='No pude ('+e.message+'). El pronóstico llega hasta 16 días adelante y necesita internet.'}}
 function usarLugar(){const L=lugGet().find(x=>String(x.id)===$('lugares').value);if(!L)return;ponAire(L.elev,L.pres);$('oPrep').textContent='En uso: '+lugTxt(L)+'. Pon temperatura, humedad y viento de tu anemómetro.'}
 function borrarLugar(){const id=$('lugares').value;if(!id)return;ls.set('slug217_lugares',lugGet().filter(x=>String(x.id)!==id));lugPintar()}
+
+// Sin senal: presion de atmosfera estandar para la altitud escrita (error tipico ±5–10 hPa segun el dia)
+const readT=()=>{const t=num($('temp').value);return isFinite(t)?t:15};
+function sinSenal(){const a=num($('alt').value),els=document.querySelectorAll('.oAire');if(!isFinite(a)){els.forEach(e=>e.textContent='Escribe primero la altitud (m) en «Arma, munición y aire».');return}
+ $('pres').value='';compute();const P=atm(a,readT(),null,0).p/100;els.forEach(e=>e.innerHTML='Presión estimada para '+fmt(a,0)+' m: <b>≈ '+fmt(P,0)+' hPa</b> (atmósfera estándar; el día real puede variar ±5–10 hPa, ≈ ±1 % de densidad).')}
+// ================= CAMBIO DE CERO =================
+// 1) Angulo del cero hecho en casa: velocidad de casa + aire promedio de tus tiros (curva calibrada).
+// 2) Con ese angulo y el aire de hoy, para cada velocidad se calcula cuanto pega corrido a la distancia de cero.
+//    La velocidad que reproduce el corrimiento medido es la estimacion "por el cero".
+// 3) Se combina con el cronografo por varianza inversa (el mas preciso pesa mas). Si no calzan, se avisa.
+function refCasa(){const m=AP.res&&AP.res.m;return m?{temp:m.temp,hr:m.hr,alt:m.alt,pu:m.pu}:{temp:15,hr:30,alt:1080,pu:null}}
+function cambioCero(){const o=$('zOut');let c;try{c=readCfg()}catch(e){o.innerHTML='<p class="warn">Revisa los datos de arma y aire.</p>';return null}
+ const ratio=AJ.mv_efectiva_fps/AJ.mv_referencia_fps,f=AJ.factor_cd,R=refCasa(),mvR=num($('zRef').value)||AJ.mv_referencia_fps,x=c.cero*YD,xm=c.cero+3,dt=4e-4;
+ const ang0=tray(mvR*ratio,c.cero,c.sh,R.alt,R.temp,f,[0,0],R.pu,R.hr,dt,xm).ang;
+ const D=mv=>-tray(mv*ratio,c.cero,c.sh,c.alt,c.temp,f,[0,0],c.pres,c.hr,dt,xm,ang0).punto(x).moa; // + = hay que subir el impacto
+ const zs=$('zMoa').value.trim(),zv=num(zs),zm=isFinite(zv)?Math.abs(zv)*($('zU').value==='clicks'?c.clic:1):null,dz=zm===null?null:($('zDir').value==='ABAJO'?zm:-zm);
+ const vs=num($('zVel').value),nn=num($('zN').value)||5,sd=num($('zSd').value)||8,vc=isFinite(vs)&&vs>300?vs:null,sc=vc?Math.sqrt(sd*sd/nn+9):null;
+ const d0=D(mvR),sl=(D(mvR+10)-D(mvR-10))/20;let vz=null,sz=null,lim=false;
+ if(dz!==null){let lo=mvR-250,hi=mvR+250;if(dz>D(lo)||dz<D(hi))lim=true;for(let i=0;i<40;i++){const mid=(lo+hi)/2;if(D(mid)>dz)lo=mid;else hi=mid}vz=(lo+hi)/2;const s2=(D(vz+10)-D(vz-10))/20;sz=.25/Math.abs(s2)}
+ if(vz===null&&vc===null){o.innerHTML='<p class="warn">Escribe cuánto se corrió el cero, la velocidad del cronógrafo, o ambos.</p>';return null}
+ let v,sv,txt='',av='';
+ if(vz!==null&&vc!==null){const dif=Math.abs(vz-vc),lim2=2*Math.sqrt(sz*sz+sc*sc);
+  if(dif>lim2){v=vc;sv=sc;av='El corrimiento del cero no calza con el cronógrafo ('+fmt(dif,0)+' fps de diferencia). Lo más probable es que, además de la velocidad, se haya movido algo (mira, montaje, munición). Uso la velocidad del cronógrafo; al volver a hacer el cero a '+fmt(c.cero,0)+' yd ese otro corrimiento queda corregido.'}
+  else{const w1=1/sz**2,w2=1/sc**2;v=(vz*w1+vc*w2)/(w1+w2);sv=Math.sqrt(1/(w1+w2))}}
+ else if(vc!==null){v=vc;sv=sc}else{v=vz;sv=sz;av='Solo con el cero la velocidad es poco precisa: '+fmt(c.cero,0)+' yd es corto y 1 MOA equivale a unos '+fmt(1/Math.abs(sl),0)+' fps. Si puedes, mide con el cronógrafo.'}
+ if(lim)av+=(av?' ':'')+'El corrimiento es demasiado grande para explicarlo solo con velocidad (más de ±250 fps): revisa la mira.';
+ const filas=[['Por el cero',vz,sz],['Cronógrafo',vc,sc],['<b>Estimada</b>',v,sv]].filter(r=>r[1]!==null);
+ txt='<p class="small">Cero hecho en casa con '+fmt(mvR,0)+' fps · '+fmt(R.temp,0)+' °C · '+fmt(R.alt,0)+' m'+(R.pu?' · '+fmt(R.pu,0)+' hPa':'')+'. Con esa velocidad y el aire de hoy, el cero estaría corrido '+fmt(Math.abs(d0),2)+' MOA '+(d0>=0?'↓':'↑')+' solo por el aire. Sensibilidad: 10 fps mueven '+fmt(Math.abs(sl*10),2)+' MOA a '+fmt(c.cero,0)+' yd.</p>';
+ txt+='<table><tr><th style="text-align:left">Fuente</th><th>fps</th><th>±</th></tr>'+filas.map(r=>'<tr><td style="text-align:left">'+r[0]+'</td><td>'+fmt(r[1],0)+'</td><td>'+fmt(r[2],0)+'</td></tr>').join('')+'</table>';
+ if(av)txt+='<p class="warn">'+av+'</p>';
+ // curva antes / ahora (ya con el cero rehecho a la misma distancia), con lo aprendido y tus tiros
+ const ds=($('mDist').value.split(/[\s;\/]+/).map(num).filter(x=>x>0));const uni=$('unidad').value,L=ds.length?ds:[75,100,150,200,250,300];
+ const vert=(mv,dyd)=>{const cc=Object.assign({},c,{mv}),dm=dyd*YD,T=trays(cc,0);if(dm>T.t0.alc)return null;const r=solve(cc,0,dm);return r.vert-apCorr(cc,0,dyd)[0]-apLocal(cc,dyd)};
+ const fl=m=>m===null?'–':fmt(alClick(m,c.clic),2)+(m<0?' ↓':' ↑');
+ txt+='<p class="small" style="margin:10px 0 2px"><b>Curva nueva</b> (después de volver a dejar el cero a '+fmt(c.cero,0)+' yd), aire de hoy:</p><table><tr><th style="text-align:left">'+uni+'</th><th>Con '+fmt(mvR,0)+'</th><th>Con '+fmt(v,0)+'</th><th>Cambio</th></tr>';
+ for(const d of L){const dyd=uni==='yd'?d:d/YD,a=vert(mvR,dyd),b=vert(v,dyd);txt+='<tr><td style="text-align:left">'+fmt(d,0)+'</td><td>'+fl(a)+'</td><td><b>'+fl(b)+'</b></td><td>'+(a!==null&&b!==null?fmt(Math.abs(b-a),2)+((b-a)<0?' ↓':' ↑'):'–')+'</td></tr>'}
+ txt+='</table><div class="bt"><button id="bZok">Usar '+fmt(v,0)+' fps</button><button class="s" id="bZno">Volver a '+fmt(mvR,0)+'</button></div><div class="small" id="zMsg"></div>';
+ o.innerHTML=txt;const reg={fecha:new Date().toISOString().slice(0,16).replace('T',' '),alt:c.alt,pres:c.pres,temp:c.temp,hr:c.hr,dz,vc,v:Math.round(v),sv:Math.round(sv),mvR};
+ $('bZok').onclick=()=>{$('mv').value=fmt(Math.round(v),0);compute();const H=ls.get('slug217_ceros')||[];H.unshift(reg);ls.set('slug217_ceros',H.slice(0,30));
+  $('zMsg').innerHTML='Listo: la calculadora usa <b>'+fmt(Math.round(v),0)+' fps</b>. Ahora deja tu cero en '+fmt(c.cero,0)+' yd (corrige hasta el centro y vuelve a poner la torreta en 0). Los tiros que guardes hoy quedan con esta velocidad y el modelo los aprende así.'};
+ $('bZno').onclick=()=>{$('mv').value=fmt(mvR,0);compute();$('zMsg').textContent='Vuelto a '+fmt(mvR,0)+' fps.'};return reg}
+function zAire(){const e=$('zAire');if(!e)return;try{const c=readCfg(),P=c.pres||atm(c.alt,c.temp,null,c.hr).p/100;e.innerHTML='Usando: '+fmt(c.alt,0)+' m · '+fmt(P,0)+' hPa '+(c.pres?'(escrita/online)':'(estimada de altitud)')+' · '+fmt(c.temp,1)+' °C · '+fmt(c.hr,0)+' % · velocidad '+fmt(c.mv,0)+' fps';document.querySelectorAll('.zC').forEach(z=>z.textContent=fmt(c.cero,0));
+ $('pres').placeholder=c.pres?'':'≈ '+fmt(atm(c.alt,c.temp,null,c.hr).p/100,0)+' (altitud)'}catch(x){e.textContent='Revisa los datos de arma y aire.'}}
 (function init(){REG=ls.get('slug217_registro')||[];migrar();const s=Object.assign({},DEF,ls.get('slug217_cfg')||{});for(const k in DEF)$(k).value=s[k];cnt();
  $('apr').checked=ls.get('slug217_apr')!==false;const pz=ls.get('slug217_prio');if(pz!==null)$('prio').value=String(pz);$('prio').addEventListener('change',()=>{ls.set('slug217_prio',+$('prio').value);compute()});$('apr').addEventListener('change',()=>{ls.set('slug217_apr',$('apr').checked);compute()});$('bMod').onclick=verModelo;
- let t;document.querySelectorAll('input,select').forEach(e=>{if(!/^(ok|v[EL]|s[EL]|notas|fImp|apr)/.test(e.id)&&!/^(lect|lugar|lfecha|lhora|lugares|mDist)/.test(e.id))e.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(compute,200)})});
+ let t;document.querySelectorAll('input,select').forEach(e=>{if(!/^(ok|v[EL]|s[EL]|notas|fImp|apr)/.test(e.id)&&!/^(lect|lugar|lfecha|lhora|lugares|mDist|z)/.test(e.id))e.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(compute,200)})});
  $('uso').addEventListener('change',updPred);$('okE').onchange=()=>togg('E');$('okL').onchange=()=>togg('L');
  $('mDist').value=ls.get('slug217_match')||'';$('mDist').addEventListener('input',()=>{clearTimeout(t);t=setTimeout(match,250)});
  $('lect').addEventListener('input',lecturas);$('bLect').onclick=usarLect;$('bGps').onclick=aquiAhora;$('bPrep').onclick=preparar;$('bUsarL').onclick=usarLugar;$('bBorL').onclick=borrarLugar;$('lfecha').value=hoy();lugPintar();
+ $('zRef').value=ls.get('slug217_zref')||fmt(AJ.mv_referencia_fps,0);$('zRef').addEventListener('change',()=>ls.set('slug217_zref',$('zRef').value));$('bCero').onclick=cambioCero;
  $('guardar').onclick=guardar;$('bTabla').onclick=tabla;$('bReg').onclick=verReg;$('bExp').onclick=exportar;$('bImp').onclick=()=>$('fImp').click();
  $('fImp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const n=importar(await f.text());$('msg').textContent=n+' tiros nuevos importados.';e.target.value=''};
  $('bDel').onclick=()=>{if(REG.length&&confirm('¿Borrar el último tiro? No se puede deshacer.')){REG.pop();ls.set('slug217_registro',REG);cnt();apActualizar();compute();verReg()}};
