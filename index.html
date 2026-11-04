@@ -37,12 +37,13 @@ h3{margin:14px 0 4px;font-size:17px}.g{color:var(--ok)}textarea{font:inherit;col
 <div class="card"><div class="row"><b style="font-size:30px;line-height:1">Slug .217</b><span class="small">38 gr · 949 fps · aprende de tus tiros · modo match</span></div></div>
 <div class="card"><label>Distancia al blanco<span><input id="dist" inputmode="decimal"> <select id="unidad"><option value="yd">yd</option><option value="m">m</option></select></span></label></div>
 <div class="card" id="res">
-<div class="k">Caída</div><div class="big" id="oVert">–</div><div class="small" id="oClk"></div>
+<div class="k">Caída</div><div class="big" id="oVert">–</div><div class="small" id="oClk"></div><div class="small">↓ = torreta hacia donde crecen los números · ↑ = al revés</div>
 <div class="row" style="margin-top:8px"><span class="k">Viento baja (valle)</span><span class="v g" id="oBaja">–</span></div>
 <div class="row"><span class="k">Viento media</span><span class="v b" id="oMed">–</span></div>
 <div class="row"><span class="k">Viento alta (ráfaga)</span><span class="v a" id="oPeak">–</span></div>
 <div class="small" id="oInfo" style="margin-top:6px"></div><div class="warn" id="oAviso"></div>
-<label class="ck small" style="margin-top:4px"><input type="checkbox" id="apr" checked> Aplicar lo aprendido de mis tiros</label><div class="small" id="oApr"></div></div>
+<label class="ck small" style="margin-top:4px"><input type="checkbox" id="apr" checked> Aplicar lo aprendido de mis tiros</label>
+<label class="small">Prioridad a mis tiros en la caída<select id="prio" style="min-width:0"><option value="2" selected>Máxima</option><option value="1">Normal</option><option value="0">No</option></select></label><div class="small" id="oApr"></div></div>
 <div class="card"><b>Modo match · varias distancias</b>
 <label>Distancias<span id="mU" class="small" hidden></span><input id="mDist" inputmode="text" style="width:62%;text-align:left" placeholder="85 120 150 200 235"></label>
 <div class="small">Sepáralas con espacios. Usa el viento, la dirección y el aire de abajo.</div>
@@ -209,10 +210,12 @@ function apActualizar(){try{const dv=[],dl=[];
  for(const f of REG){const c=condFila(f);if(!c||!c.usar||Math.abs(c.d-c.cero)<.5)continue;const r=apRasgos(c);dv.push([r,c]);if(c.lr!==null)dl.push([r,c])}
  const med=k=>{const v=dv.map(([,c])=>c[k]).filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:0};
  const m={temp:med('temp'),hr:med('hr'),pu:med('pu'),alt:med('alt')},res={m,nv:dv.length,nl:dl.length};
+ AP.loc=dv.map(([r,c])=>({d:c.d,mv:c.mv,cero:c.cero,sh:c.sh,er:c.er,r0:c.er-r.eb,rl:c.er-r.eb}));
  for(const[eje,defs,datos,yf]of[['v',DV,dv,(r,c)=>c.er-r.eb],['l',DL,dl,(r,c)=>c.lr-r.lb]]){
   if(datos.length<AP.MIN_MCO){res[eje]={ok:false,motivo:'faltan tiros (hay '+datos.length+', se necesitan '+AP.MIN_MCO+')'};continue}
   const y=datos.map(([r,c])=>yf(r,c)),{fin,X,desc}=apDiseno(defs,datos,m);
-  res[eje]={ok:true,n:datos.length,fin,desc,mco:fin.length?mco(X,y,fin.map(d=>d[1])):null,lz:datos.length>=AP.MIN_CORR?lassoCV(X,y):null}}
+  res[eje]={ok:true,n:datos.length,fin,desc,mco:fin.length?mco(X,y,fin.map(d=>d[1])):null,lz:datos.length>=AP.MIN_CORR?lassoCV(X,y):null};
+  if(eje==='v'&&res.v.lz&&res.v.lz.tipo==='lasso')AP.loc.forEach((p,i)=>p.rl=y[i]-res.v.lz.pred(X[i].slice(1)))}
  if(res.v.ok&&res.l.ok&&res.v.mco&&res.l.mco){const iv=new Map(dv.map(([,c],i)=>[c,i])),pr=dl.filter(([,c])=>iv.has(c)).map(([,c],j)=>[res.v.mco.resid[iv.get(c)],res.l.mco.resid[j]]);
   if(pr.length>=4){const a=pr.map(p=>p[0]),b=pr.map(p=>p[1]),ma=a.reduce((s,v)=>s+v,0)/a.length,mb=b.reduce((s,v)=>s+v,0)/b.length,
    sa=Math.sqrt(a.reduce((s,v)=>s+(v-ma)**2,0)),sb=Math.sqrt(b.reduce((s,v)=>s+(v-mb)**2,0));res.corr=sa>0&&sb>0?a.reduce((s,v,i)=>s+(v-ma)*(b[i]-mb),0)/(sa*sb):0;res.ncorr=pr.length}}
@@ -220,6 +223,13 @@ function apActualizar(){try{const dv=[],dl=[];
 function apCorr(c,vk,dyd){if(!AP.listo||!$('apr').checked||!AP.res)return[0,0];const R=AP.res,act=['v','l'].filter(e=>R[e].ok&&R[e].lz&&R[e].lz.tipo==='lasso');
  if(!act.length)return[0,0];const cc={d:dyd,mv:c.mv,cero:c.cero,sh:c.sh,alt:c.alt,temp:c.temp,pres:c.pres,pu:c.pres||atm(c.alt,c.temp,null,0).p/100,hr:c.hr,viento:vk,dir:c.dir,giro:c.giro},r=rasgos(cc);
  return['v','l'].map(e=>{const M=R[e];if(!act.includes(e))return 0;const x=M.fin.map(d=>d[3](r,cc,R.m));return M.lz.pred(x.slice(1))})}
+// Prioridad a mis tiros: lo que el modelo aun no explica en tus tiros (residuo) se suma segun la cercania en distancia.
+// Peso gaussiano por distancia; k0 = cuanto se confia en el modelo cuando hay pocos tiros cerca. Lejos de tus tiros -> no cambia nada.
+function apLocal(c,dyd){const mo=+$('prio').value;if(!mo||!AP.loc)return 0;const h=mo===2?Math.max(1,.02*dyd):Math.max(2,.06*dyd),k0=mo===2?.05:.3,useL=AP.listo&&$('apr').checked;
+ let sw=0,sr=0;for(const p of AP.loc){if(Math.abs(p.mv-c.mv)>5||Math.abs(p.cero-c.cero)>.5||Math.abs(p.sh-c.sh)>.05)continue;const w=Math.exp(-.5*((p.d-dyd)/h)**2);if(w<1e-4)continue;sw+=w;sr+=w*(useL?p.rl:p.r0)}
+ return sw?sr/(sw+k0):0}
+function misTiros(c,dyd){if(!AP.loc)return'';const v=AP.loc.filter(p=>Math.abs(p.d-dyd)<=1&&Math.abs(p.mv-c.mv)<=5&&Math.abs(p.cero-c.cero)<=.5);
+ return v.length?' · tu dato: '+v.map(p=>fmt(Math.abs(p.er),2)+(p.er>=0?' ↓':' ↑')).join(', '):''}
 function apTexto(){if(!AP.listo||!AP.res)return AP.err?'Aprendizaje: error ('+AP.err+')':'Aprendizaje: calculando…';const R=AP.res,p=[];
  for(const[e,n]of[['v','caída'],['l','lateral']]){const M=R[e];if(!M.ok)p.push(n+': '+M.motivo);else if(M.lz&&M.lz.tipo==='lasso')p.push(n+': corrige (error '+fmt(M.lz.rmse_cv,2)+' vs '+fmt(M.lz.rmse_base,2)+' MOA)');
   else p.push(n+': la física ya predice bien'+(M.lz?' (±'+fmt(M.lz.rmse_base,2)+' MOA)':''))}
@@ -266,9 +276,9 @@ function compute(){
  try{const c=readCfg(),d=num($('dist').value);if(!(d>0))throw 'dist';const dyd=$('unidad').value==='yd'?d:d/YD,dm=dyd*YD,T=trays(c,c.viento);
   if(dm>T.t0.alc){U=null;$('oVert').textContent='–';$('oAviso').textContent='El slug no llega a esa distancia.';updPred();match();return}
   const[bj,bEst]=bajaEf(c),r=solve(c,c.viento,dm),rp=c.peak>0?solve(c,c.peak,dm):null,rb=bj!=null?solve(c,bj,dm):null;
-  for(const[rr_,vk]of[[r,c.viento],[rp,c.peak],[rb,bj]]){if(!rr_)continue;const[ce,cl]=apCorr(c,vk,dyd);rr_.ae=ce;rr_.al=cl;rr_.vert-=ce;rr_.lat-=cl}
-  $('oVert').textContent=fmt(alClick(r.vert,c.clic),2)+' MOA '+(r.vert<0?'↑':'↓');
-  $('oClk').textContent=(c.clic>0?Math.round(Math.abs(r.vert)/c.clic):0)+' clicks · exacto '+fmt(Math.abs(r.vert),2)+' MOA';
+  const loc=apLocal(c,dyd);for(const[rr_,vk]of[[r,c.viento],[rp,c.peak],[rb,bj]]){if(!rr_)continue;const[ce,cl]=apCorr(c,vk,dyd);rr_.ae=ce;rr_.al=cl;rr_.vert-=ce+loc;rr_.lat-=cl}
+  $('oVert').textContent=fmt(alClick(r.vert,c.clic),2)+' MOA '+(r.vert<0?'↓':'↑');
+  $('oClk').textContent=(c.clic>0?Math.round(Math.abs(r.vert)/c.clic):0)+' clicks · exacto '+fmt(Math.abs(r.vert),2)+' MOA'+(Math.abs(loc)>=.01?' · por tus tiros '+(loc>0?'+':'−')+fmt(Math.abs(loc),2):'')+misTiros(c,dyd);
   $('oBaja').textContent=rb?latTxt(rb.lat,c.clic)+(bEst?' ≈':''):'–';$('oMed').textContent=latTxt(r.lat,c.clic);$('oPeak').textContent=rp?latTxt(rp.lat,c.clic):'–';
   const rr=AJ.rho_ref;
   $('oInfo').textContent=fmt(r.v/FPS,0)+' fps · '+fmt(r.e,1)+' J · '+fmt(r.t,2)+' s · aire '+fmt(T.t0.rho,3)+' kg/m³ ('+fmt((T.t0.rho/rr-1)*100,1)+'% vs tus disparos)';
@@ -281,15 +291,15 @@ function compute(){
  updPred();match();ls.set('slug217_cfg',cfg())}
 function predLat(){if(!U)return null;if($('uso').value==='Peak')return U.rp?[U.rp,U.c.peak,'Peak']:null;if($('uso').value==='Baja')return U.rb?[U.rb,U.bj,'Baja']:null;return[U.r,U.c.viento,U.c.viento?'Media':'Sin viento']}
 function updPred(){if(!U){$('pE').textContent='–';$('pL').textContent='–';return}
- $('pE').textContent=fmt(alClick(U.r.vert,U.c.clic),2)+' MOA '+(U.r.vert<0?'ARRIBA':'ABAJO');const p=predLat();$('pL').textContent=p?latTxt(p[0].lat,U.c.clic):'sin ese viento'}
+ $('pE').textContent=fmt(alClick(U.r.vert,U.c.clic),2)+' MOA '+(U.r.vert<0?'ABAJO':'ARRIBA');const p=predLat();$('pL').textContent=p?latTxt(p[0].lat,U.c.clic):'sin ese viento'}
 function togg(w){const ok=$('ok'+w).checked;$('r'+w).classList.toggle('on',!ok);if(ok||!U)return;
- if(w==='E'){$('vE').value=fmt(alClick(U.r.vert,U.c.clic),2);$('sE').value=U.r.vert<0?'ARRIBA':'ABAJO'}
+ if(w==='E'){$('vE').value=fmt(alClick(U.r.vert,U.c.clic),2);$('sE').value=U.r.vert<0?'ABAJO':'ARRIBA'}
  else{const p=predLat(),l=p?p[0].lat:0;$('vL').value=fmt(alClick(l,U.c.clic),2);$('sL').value=l>0?'IZQUIERDA':'DERECHA'}}
 const sg=(v,pos)=>pos?v:-v;
 function guardar(){const msg=$('msg');if(!U){msg.textContent='Completa datos válidos antes de guardar.';return}
  const p=predLat();if(!p){msg.textContent='Elegiste viento '+($('uso').value==='Peak'?'alta':'baja')+' pero está vacío.';return}
  const c=U.c,[rl,vk,uso]=p,ep=-U.r.vert,lp=-rl.lat,ed=sg(alClick(ep,c.clic),ep>=0),ld=sg(alClick(lp,c.clic),lp>=0);let er,ee,lr,le;
- try{if($('okE').checked){er=ed;ee='OK'}else{const v=num($('vE').value);if(!isFinite(v))throw 0;er=sg(Math.abs(v),$('sE').value==='ARRIBA');ee=Math.abs(er-ed)<1e-9?'OK':'CORREGIDO'}
+ try{if($('okE').checked){er=ed;ee='OK'}else{const v=num($('vE').value);if(!isFinite(v))throw 0;er=sg(Math.abs(v),$('sE').value==='ABAJO');ee=Math.abs(er-ed)<1e-9?'OK':'CORREGIDO'}
   if($('okL').checked){lr=ld;le='OK'}else{const v=num($('vL').value);if(!isFinite(v))throw 0;lr=sg(Math.abs(v),$('sL').value==='DERECHA');le=Math.abs(lr-ld)<1e-9?'OK':'CORREGIDO'}
  }catch(e){msg.textContent='Escribe la corrección real como número (ej. 23,5).';return}
  const n=new Date(),z=x=>String(x).padStart(2,'0');
@@ -319,7 +329,7 @@ function tabla(){if(!U){$('msg').textContent='Completa datos válidos primero.';
  let h='<tr><th>yd</th><th>Caída</th><th>clicks</th><th>Viento baja</th><th>Viento media</th><th>Viento alta</th><th>fps</th><th>J</th><th>s</th></tr>';
  const lt=l=>{const v=alClick(l,c.clic);return v===0?'0,00':fmt(v,2)+' '+(l>0?'IZQ':'DER')};
  const bj=U.bj;for(let d=10;d*YD<=Math.min(T.t0.alc,500*YD);d+=10){const r=solve(c,c.viento,d*YD),rp=c.peak>0?solve(c,c.peak,d*YD):null,rb=bj!=null?solve(c,bj,d*YD):null;
-  h+='<tr><td>'+d+'</td><td>'+fmt(alClick(r.vert,c.clic),2)+(r.vert<0?' ↑':' ↓')+'</td><td>'+Math.round(Math.abs(r.vert)/c.clic)+'</td><td>'+(rb?lt(rb.lat):'–')+'</td><td>'+lt(r.lat)+'</td><td>'+(rp?lt(rp.lat):'–')+'</td><td>'+fmt(r.v/FPS,0)+'</td><td>'+fmt(r.e,1)+'</td><td>'+fmt(r.t,2)+'</td></tr>'}
+  h+='<tr><td>'+d+'</td><td>'+fmt(alClick(r.vert,c.clic),2)+(r.vert<0?' ↓':' ↑')+'</td><td>'+Math.round(Math.abs(r.vert)/c.clic)+'</td><td>'+(rb?lt(rb.lat):'–')+'</td><td>'+lt(r.lat)+'</td><td>'+(rp?lt(rp.lat):'–')+'</td><td>'+fmt(r.v/FPS,0)+'</td><td>'+fmt(r.e,1)+'</td><td>'+fmt(r.t,2)+'</td></tr>'}
  $('tb').innerHTML=h;$('vTabla').classList.add('on')}
 function verReg(){$('rTit').textContent=REG.length+' tiros guardados en este teléfono. Exporta el CSV para pasarlos al computador.';
  $('rb').innerHTML='<tr>'+COLS.map(k=>'<th>'+k+'</th>').join('')+'</tr>'+REG.map(f=>'<tr>'+COLS.map(k=>'<td>'+(f[k]??'')+'</td>').join('')+'</tr>').join('');$('vReg').classList.add('on')}
@@ -330,14 +340,14 @@ function match(){const el=$('mt'),s=$('mDist').value,uni=$('unidad').value;ls.se
  if(!U){el.innerHTML='';$('mInfo').textContent='Revisa los datos de viento y aire: deben ser números.';return}
  const c=U.c,T=trays(c,c.viento),[lo,hi]=AJ.rango_valido_yd,ck=m=>c.clic>0?Math.round(Math.abs(m)/c.clic):0;
  const lt=r=>{if(!r)return'–';const v=alClick(r.lat,c.clic);return v===0?'0,00<br><span class="small">0 cl</span>':fmt(v,2)+' '+(r.lat>0?'I':'D')+'<br><span class="small">'+ck(r.lat)+' cl</span>'};
- const one=(vk,dyd,dm)=>{if(vk==null)return null;const r=solve(c,vk,dm),[ce,cl]=apCorr(c,vk,dyd);r.vert-=ce;r.lat-=cl;return r};
+ const one=(vk,dyd,dm)=>{if(vk==null)return null;const r=solve(c,vk,dm),[ce,cl]=apCorr(c,vk,dyd);r.vert-=ce+apLocal(c,dyd);r.lat-=cl;return r};
  let h='<tr><th style="text-align:left">'+uni+'</th><th>Caída</th><th class="g">Baja</th><th class="b">Media</th><th class="a">Alta</th></tr>',fuera=false;
  for(const d of ds){const dyd=uni==='yd'?d:d/YD,dm=dyd*YD,f=dyd<lo||dyd>hi;fuera=fuera||f;
   if(dm>T.t0.alc){h+='<tr><td style="text-align:left">'+fmt(d,0)+'</td><td colspan="4">no llega</td></tr>';continue}
   const rm=one(c.viento,dyd,dm),rb=one(U.bj,dyd,dm),ra=c.peak>0?one(c.peak,dyd,dm):null;
-  h+='<tr><td style="text-align:left">'+fmt(d,0)+(f?'*':'')+'</td><td>'+fmt(alClick(rm.vert,c.clic),2)+(rm.vert<0?' ↑':' ↓')+'<br><span class="small">'+ck(rm.vert)+' cl · '+fmt(rm.t,2)+' s</span></td><td class="g">'+lt(rb)+'</td><td class="b">'+lt(rm)+'</td><td class="a">'+lt(ra)+'</td></tr>'}
+  h+='<tr><td style="text-align:left">'+fmt(d,0)+(f?'*':'')+'</td><td>'+fmt(alClick(rm.vert,c.clic),2)+(rm.vert<0?' ↓':' ↑')+'<br><span class="small">'+ck(rm.vert)+' cl · '+fmt(rm.t,2)+' s</span></td><td class="g">'+lt(rb)+'</td><td class="b">'+lt(rm)+'</td><td class="a">'+lt(ra)+'</td></tr>'}
  el.innerHTML=h;
- $('mInfo').innerHTML='Viento '+(U.bj!=null?fmt(U.bj,1):'–')+(U.bEst?' (estimada)':'')+' / '+fmt(c.viento,1)+' / '+fmt(c.peak,1)+' km/h desde '+fmt(c.dir,0)+'° · '+fmt(c.temp,0)+' °C · '+fmt(U.p,0)+' hPa'+(c.pres?'':' (de altitud)')+'.<br>Caída: ↑ = sube la torreta. Viento: D = corrige a la derecha, I = a la izquierda. cl = clicks de '+fmt(c.clic,2)+' MOA. s = tiempo de vuelo.'+(fuera?'<br>* Fuera de tus disparos ('+lo+'–'+hi+' yd): la caída se extrapola.':'')+(AP.listo&&$('apr').checked?'':'<br>Sin aplicar lo aprendido.')}
+ $('mInfo').innerHTML='Viento '+(U.bj!=null?fmt(U.bj,1):'–')+(U.bEst?' (estimada)':'')+' / '+fmt(c.viento,1)+' / '+fmt(c.peak,1)+' km/h desde '+fmt(c.dir,0)+'° · '+fmt(c.temp,0)+' °C · '+fmt(U.p,0)+' hPa'+(c.pres?'':' (de altitud)')+'.<br>Caída: ↓ = gira la torreta hacia donde crecen los números · ↑ = al revés. Viento: D = corrige a la derecha, I = a la izquierda. cl = clicks de '+fmt(c.clic,2)+' MOA. s = tiempo de vuelo.'+(fuera?'<br>* Fuera de tus disparos ('+lo+'–'+hi+' yd): la caída se extrapola.':'')+(AP.listo&&$('apr').checked?'':'<br>Sin aplicar lo aprendido.')}
 // Anemometro: lecturas sueltas -> baja (P10), media (promedio), alta (P90)
 function lecturas(){const v=$('lect').value.split(/[\s;\/]+/).map(num).filter(x=>isFinite(x)&&x>=0),o=$('oLect');
  if(v.length<3){o.textContent=v.length?'Faltan lecturas (mínimo 3, ideal 15 o más).':'';return null}
@@ -378,7 +388,7 @@ async function preparar(){const o=$('oPrep'),q=$('lugar').value.trim(),f=$('lfec
 function usarLugar(){const L=lugGet().find(x=>String(x.id)===$('lugares').value);if(!L)return;ponAire(L.elev,L.pres);$('oPrep').textContent='En uso: '+lugTxt(L)+'. Pon temperatura, humedad y viento de tu anemómetro.'}
 function borrarLugar(){const id=$('lugares').value;if(!id)return;ls.set('slug217_lugares',lugGet().filter(x=>String(x.id)!==id));lugPintar()}
 (function init(){REG=ls.get('slug217_registro')||[];migrar();const s=Object.assign({},DEF,ls.get('slug217_cfg')||{});for(const k in DEF)$(k).value=s[k];cnt();
- $('apr').checked=ls.get('slug217_apr')!==false;$('apr').addEventListener('change',()=>{ls.set('slug217_apr',$('apr').checked);compute()});$('bMod').onclick=verModelo;
+ $('apr').checked=ls.get('slug217_apr')!==false;const pz=ls.get('slug217_prio');if(pz!==null)$('prio').value=String(pz);$('prio').addEventListener('change',()=>{ls.set('slug217_prio',+$('prio').value);compute()});$('apr').addEventListener('change',()=>{ls.set('slug217_apr',$('apr').checked);compute()});$('bMod').onclick=verModelo;
  let t;document.querySelectorAll('input,select').forEach(e=>{if(!/^(ok|v[EL]|s[EL]|notas|fImp|apr)/.test(e.id)&&!/^(lect|lugar|lfecha|lhora|lugares|mDist)/.test(e.id))e.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(compute,200)})});
  $('uso').addEventListener('change',updPred);$('okE').onchange=()=>togg('E');$('okL').onchange=()=>togg('L');
  $('mDist').value=ls.get('slug217_match')||'';$('mDist').addEventListener('input',()=>{clearTimeout(t);t=setTimeout(match,250)});
