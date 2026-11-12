@@ -32,7 +32,7 @@ button.s{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th{position:sticky;top:0;background:var(--bg)}
 .sc{overflow-x:auto}
 h3{margin:14px 0 4px;font-size:17px}.g{color:var(--ok)}textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;resize:vertical}
-#mt td,#mt th{padding:6px 4px;font-size:15px}#mt td{font-weight:700;vertical-align:top}#mt .small{font-weight:400}.bt{display:flex;gap:8px;margin-top:6px}.bt button{flex:1}ul{margin:4px 0;padding-left:18px}
+#mt td,#mt th{padding:6px 4px;font-size:15px}#mt td{font-weight:700;vertical-align:top}#mt .small{font-weight:400}.bt{display:flex;gap:8px;margin-top:6px}#bkOut table,#zOut table{width:100%;table-layout:fixed}#bkOut td,#zOut td{white-space:normal;font-size:14px;overflow-wrap:anywhere}.bt button{flex:1}ul{margin:4px 0;padding-left:18px}
 </style></head><body><main>
 <div class="card"><div class="row"><b style="font-size:30px;line-height:1">Slug .217</b><span class="small">38 gr · 949 fps · aprende de tus tiros · modo match</span></div></div>
 <div class="card"><label>Distancia al blanco<span><input id="dist" inputmode="decimal"> <select id="unidad"><option value="yd">yd</option><option value="m">m</option></select></span></label></div>
@@ -88,6 +88,16 @@ h3{margin:14px 0 4px;font-size:17px}.g{color:var(--ok)}textarea{font:inherit;col
 <label>Velocidad con la que hiciste el cero en casa<input id="zRef" inputmode="decimal"></label>
 <button id="bCero" style="width:100%;margin-top:6px">Estimar velocidad de hoy</button>
 <div id="zOut" style="margin-top:8px"></div></details>
+<details id="dMov"><summary>Blanco en movimiento</summary>
+<p class="small" style="margin:0 0 6px">Supone que el blanco va a velocidad pareja mientras va hacia un lado. Usa la distancia de arriba y el aire, la velocidad y el viento de la app.</p>
+<label>Recorrido en la retícula (MOA)<input id="bkMoa" inputmode="decimal" placeholder="10"></label>
+<label>Tiempos medidos (s)<input id="bkT" inputmode="text" style="width:52%;text-align:left" placeholder="2,1 2,3 2,0"></label>
+<div class="small">Cronometra 2 o 3 pasadas de un extremo al otro de ese recorrido, separadas por espacio.</div>
+<label>Va de<select id="bkDir"><option value="RL">derecha → izquierda</option><option value="LR">izquierda → derecha</option></select></label>
+<label>Demora del disparo (s)<input id="bkLag" inputmode="decimal" placeholder="0"></label>
+<div class="small">Opcional: tiempo entre que decides disparar y sale la bala. Déjalo en 0 si no lo sabes.</div>
+<div id="bkOut" style="margin-top:8px"></div>
+<p class="small">Mide el recorrido con la retícula en el aumento en que sus MOA son correctos (si es de segundo plano focal, en el aumento de calibración).</p></details>
 <details><summary>Presión y altitud online</summary>
 <button id="bGps" style="width:100%">Aquí y ahora (GPS + internet)</button><div class="small oAire" id="oGps" style="margin-top:4px"></div>
 <h3>Preparar un lugar antes del match</h3>
@@ -308,7 +318,7 @@ function compute(){
   if((c.viento||c.peak)&&Math.abs(c.fv-1)<1e-9)av+=(av?' ':'')+'Viento sin calibrar (factor 1,00).';
   $('oAviso').textContent=av;$('oApr').textContent=apTexto()+(AP.listo&&(r.ae||r.al)?' · aplicado aquí: caída '+fmt(r.ae,2)+' · lateral '+fmt(r.al,2)+' MOA':'');U={c,r,rp,rb,bj,bEst,dyd,rho:T.t0.rho,p:T.t0.p/100}
  }catch(e){U=null;$('oAviso').textContent='Revisa los datos: deben ser números.';$('mt').innerHTML=''}
- updPred();match();zAire();ls.set('slug217_cfg',cfg())}
+ updPred();match();zAire();blanco();ls.set('slug217_cfg',cfg())}
 function predLat(){if(!U)return null;if($('uso').value==='Peak')return U.rp?[U.rp,U.c.peak,'Peak']:null;if($('uso').value==='Baja')return U.rb?[U.rb,U.bj,'Baja']:null;return[U.r,U.c.viento,U.c.viento?'Media':'Sin viento']}
 function updPred(){if(!U){$('pE').textContent='–';$('pL').textContent='–';return}
  $('pE').textContent=fmt(alClick(U.r.vert,U.c.clic),2)+' MOA '+(U.r.vert<0?'ABAJO':'ARRIBA');const p=predLat();$('pL').textContent=p?latTxt(p[0].lat,U.c.clic):'sin ese viento'}
@@ -448,15 +458,38 @@ function cambioCero(){const o=$('zOut');let c;try{c=readCfg()}catch(e){o.innerHT
  $('bZok').onclick=()=>{$('mv').value=fmt(Math.round(v),0);compute();const H=ls.get('slug217_ceros')||[];H.unshift(reg);ls.set('slug217_ceros',H.slice(0,30));
   $('zMsg').innerHTML='Listo: la calculadora usa <b>'+fmt(Math.round(v),0)+' fps</b>. Ahora deja tu cero en '+fmt(c.cero,0)+' yd (corrige hasta el centro y vuelve a poner la torreta en 0). Los tiros que guardes hoy quedan con esta velocidad y el modelo los aprende así.'};
  $('bZno').onclick=()=>{$('mv').value=fmt(mvR,0);compute();$('zMsg').textContent='Vuelto a '+fmt(mvR,0)+' fps.'};return reg}
+
+// ================= BLANCO EN MOVIMIENTO (velocidad pareja) =================
+// MOA/s vistos = recorrido / tiempo promedio -> m/s del blanco a esa distancia -> lo que avanza en el TOF (+ demora) -> MOA de ventaja.
+function blanco(){const o=$('bkOut');if(!o)return;const M=num($('bkMoa').value),ts=$('bkT').value.split(/[\s;\/]+/).map(num).filter(x=>x>0);
+ if(!(M>0)||!ts.length){o.innerHTML='';return}if(!U){o.innerHTML='<p class="warn">Revisa los datos de arriba.</p>';return}
+ const c=U.c,dyd=U.dyd,dm=dyd*YD,tm=ts.reduce((a,b)=>a+b,0)/ts.length,lag=Math.max(0,num($('bkLag').value)||0),tof=U.r.t,moaM=dm*Math.tan(Math.PI/10800);
+ const w=M/tm,v=w*moaM,desp=v*(tof+lag),lead=desp/moaM,rl=$('bkDir').value==='RL',de=rl?'derecha':'izquierda',ha=rl?'izquierda':'derecha';
+ const tmin=Math.min(...ts),tmax=Math.max(...ts),lmax=M/tmin*(tof+lag),lmin=M/tmax*(tof+lag);
+ const ck=m=>c.clic>0?Math.round(m/c.clic):0;
+ // viento media (U.r.lat > 0 = corregir a la izquierda) + ventaja hacia donde va el blanco
+ const wl=U.r.lat,tot=wl+(rl?lead:-lead);
+ let h='<div class="big" style="font-size:30px">'+fmt(lead,2)+' MOA <span style="font-size:18px">hacia la '+ha+'</span></div>';
+ h+='<p style="margin:4px 0 8px"><b>Dispara cuando el blanco esté '+fmt(lead,2)+' MOA a la '+de+' del centro</b> (de donde viene): cuando llegue la bala, el blanco estará en el centro.</p>';
+ h+='<table><tr><td style="text-align:left">1 · Velocidad vista</td><td>'+fmt(M,1)+' MOA / '+fmt(tm,2)+' s = <b>'+fmt(w,2)+' MOA/s</b></td></tr>'+
+  '<tr><td style="text-align:left">2 · A '+fmt(dyd,0)+' yd ('+fmt(dm,1)+' m) 1 MOA = '+fmt(moaM*100,1)+' cm</td><td>blanco a <b>'+fmt(v,2)+' m/s</b> ('+fmt(v*3.6,1)+' km/h)</td></tr>'+
+  '<tr><td style="text-align:left">3 · Tiempo de vuelo'+(lag?' + demora':'')+'</td><td><b>'+fmt(tof,3)+' s</b>'+(lag?' + '+fmt(lag,2)+' s':'')+'</td></tr>'+
+  '<tr><td style="text-align:left">4 · El blanco avanza</td><td><b>'+fmt(desp*100,1)+' cm</b></td></tr>'+
+  '<tr><td style="text-align:left">5 · En MOA</td><td><b>'+fmt(lead,2)+' MOA</b> ('+ck(lead)+' clicks)</td></tr></table>';
+ if(ts.length>1)h+='<p class="small">Con tu tiempo más rápido y más lento: entre '+fmt(lmin,2)+' y '+fmt(lmax,2)+' MOA.</p>';
+ if(Math.abs(wl)>=.01)h+='<p class="small">Viento media '+latTxt(wl,c.clic)+'. Si el viento lo marcas en la torreta, usa solo la ventaja de arriba. Si lo aguantas en la retícula, total: <b>'+latTxt(tot,c.clic)+'</b>.</p>';
+ if(lead>M)h+='<p class="warn">La ventaja es mayor que el recorrido que mediste: el blanco tendría que estar fuera de ese tramo cuando dispares.</p>';
+ o.innerHTML=h;ls.set('slug217_mov',{m:$('bkMoa').value,t:$('bkT').value,d:$('bkDir').value,l:$('bkLag').value})}
 function zAire(){const e=$('zAire');if(!e)return;try{const c=readCfg(),P=c.pres||atm(c.alt,c.temp,null,c.hr).p/100;e.innerHTML='Usando: '+fmt(c.alt,0)+' m · '+fmt(P,0)+' hPa '+(c.pres?'(escrita/online)':'(estimada de altitud)')+' · '+fmt(c.temp,1)+' °C · '+fmt(c.hr,0)+' % · velocidad '+fmt(c.mv,0)+' fps';document.querySelectorAll('.zC').forEach(z=>z.textContent=fmt(c.cero,0));
  $('pres').placeholder=c.pres?'':'≈ '+fmt(atm(c.alt,c.temp,null,c.hr).p/100,0)+' (altitud)'}catch(x){e.textContent='Revisa los datos de arma y aire.'}}
 (function init(){REG=ls.get('slug217_registro')||[];migrar();const s=Object.assign({},DEF,ls.get('slug217_cfg')||{});for(const k in DEF)$(k).value=s[k];cnt();
  $('apr').checked=ls.get('slug217_apr')!==false;const pz=ls.get('slug217_prio');if(pz!==null)$('prio').value=String(pz);$('prio').addEventListener('change',()=>{ls.set('slug217_prio',+$('prio').value);compute()});$('apr').addEventListener('change',()=>{ls.set('slug217_apr',$('apr').checked);compute()});$('bMod').onclick=verModelo;
- let t;document.querySelectorAll('input,select').forEach(e=>{if(!/^(ok|v[EL]|s[EL]|notas|fImp|apr)/.test(e.id)&&!/^(lect|lugar|lfecha|lhora|lugares|mDist|z)/.test(e.id))e.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(compute,200)})});
+ let t;document.querySelectorAll('input,select').forEach(e=>{if(!/^(ok|v[EL]|s[EL]|notas|fImp|apr)/.test(e.id)&&!/^(lect|lugar|lfecha|lhora|lugares|mDist|z|bk)/.test(e.id))e.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(compute,200)})});
  $('uso').addEventListener('change',updPred);$('okE').onchange=()=>togg('E');$('okL').onchange=()=>togg('L');
  $('mDist').value=ls.get('slug217_match')||'';$('mDist').addEventListener('input',()=>{clearTimeout(t);t=setTimeout(match,250)});
  $('lect').addEventListener('input',lecturas);$('bLect').onclick=usarLect;$('bGps').onclick=aquiAhora;$('bPrep').onclick=preparar;$('bUsarL').onclick=usarLugar;$('bBorL').onclick=borrarLugar;$('lfecha').value=hoy();lugPintar();
  $('zRef').value=ls.get('slug217_zref')||fmt(AJ.mv_referencia_fps,0);$('zRef').addEventListener('change',()=>ls.set('slug217_zref',$('zRef').value));$('bCero').onclick=cambioCero;
+ {const B=ls.get('slug217_mov');if(B){$('bkMoa').value=B.m||'';$('bkT').value=B.t||'';$('bkDir').value=B.d||'RL';$('bkLag').value=B.l||''}['bkMoa','bkT','bkDir','bkLag'].forEach(i=>$(i).addEventListener('input',blanco));$('bkDir').addEventListener('change',blanco)}
  $('guardar').onclick=guardar;$('bTabla').onclick=tabla;$('bReg').onclick=verReg;$('bExp').onclick=exportar;$('bImp').onclick=()=>$('fImp').click();
  $('fImp').onchange=async e=>{const f=e.target.files[0];if(!f)return;const n=importar(await f.text());$('msg').textContent=n+' tiros nuevos importados.';e.target.value=''};
  $('bDel').onclick=()=>{if(REG.length&&confirm('¿Borrar el último tiro? No se puede deshacer.')){REG.pop();ls.set('slug217_registro',REG);cnt();apActualizar();compute();verReg()}};
