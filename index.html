@@ -34,7 +34,7 @@ th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white
 h3{margin:14px 0 4px;font-size:17px}.g{color:var(--ok)}textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;resize:vertical}
 #mt td,#mt th{padding:6px 4px;font-size:15px}#mt td{font-weight:700;vertical-align:top}#mt .small{font-weight:400}.bt{display:flex;gap:8px;margin-top:6px}#bkOut table,#zOut table{width:100%;table-layout:fixed}#bkOut td,#zOut td{white-space:normal;font-size:14px;overflow-wrap:anywhere}.bt button{flex:1}ul{margin:4px 0;padding-left:18px}
 </style></head><body><main>
-<div class="card"><div class="row"><b style="font-size:30px;line-height:1">Slug .217</b><span class="small">38 gr · 949 fps · aprende de tus tiros · ángulo · mirage · v8</span></div></div>
+<div class="card"><div class="row"><b style="font-size:30px;line-height:1">Slug .217</b><span class="small">38 gr · 949 fps · aprende de tus tiros · ángulo · mirage · v8.2</span></div></div>
 <div class="card"><label>Distancia al blanco<span><input id="dist" inputmode="decimal"> <select id="unidad"><option value="yd">yd</option><option value="m">m</option></select></span></label>
 <label>Ángulo de tiro (°)<span class="small" style="flex:1;padding-left:6px">+ arriba · − abajo</span><input id="ang" inputmode="text" placeholder="0"></label><div class="small" id="oAng"></div></div>
 <div class="card" id="res">
@@ -156,30 +156,36 @@ const num=s=>parseFloat(String(s).trim().replace(',','.'));
 const fmt=(x,d=1)=>x.toFixed(d).replace('.',',');
 function interp(x,xs,ys){if(x<=xs[0])return ys[0];if(x>=xs[xs.length-1])return ys[ys.length-1];let lo=0,hi=xs.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(xs[m]<=x)lo=m;else hi=m}const t=(x-xs[lo])/(xs[hi]-xs[lo]);return ys[lo]+t*(ys[hi]-ys[lo])}
 function atm(alt,t,p,hr){const T=t+273.15,P=p?p*100:101325*Math.pow(1-2.25577e-5*alt,5.25588),es=610.94*Math.exp(17.625*t/(t+243.04)),pv=Math.min(Math.max(hr,0),100)/100*es;return{rho:(P-pv)/(RA*T)+pv/(RV*T),a:Math.sqrt(1.4*RA*T/(1-.378*pv/P)),p:P}}
-function tray(mv,cero,sh,alt,tc,fcd,w0,pres,hr,dt=DT,xmaxYd=450,angFix=null){
+// Tiro inclinado segun Litz, Applied Ballistics for Long Range Shooting, cap. 4: se integra en el eje de la linea de mira.
+//  Efecto mayor: la gravedad que aleja al balin de la mira es g*cos(angulo).
+//  Efecto menor: g*sen(angulo) frena el balin subiendo y lo ayuda bajando (no es simetrico).
+//  Gradiente de densidad (Ec. 4.1, f = 1 + 1,3e-5*h[ft] sobre el BC): aqui en forma continua, densidad local rho0*(1-2,6e-5*h[ft]),
+//  cuyo promedio hasta el blanco reproduce exactamente la Ec. 4.1. El cero se calcula siempre a nivel.
+function tray(mv,cero,sh,alt,tc,fcd,w0,pres,hr,dt=DT,xmaxYd=450,angFix=null,inc=0){
  const at=atm(alt,tc,pres,hr),cds=CD.map(c=>c*fcd),v0=mv*FPS,shm=sh/100,k=.5*at.rho*AREA/M;
- function vol(ang,xmax,w){const[wx,wz]=w;let vx=v0*Math.cos(ang),vy=v0*Math.sin(ang),vz=0,x=0,y=-shm,z=0,t=0,i=0;const X=[x],Y=[y],Z=[z],V=[v0],T=[t];
+ function vol(ang,xmax,w,li=0){const th=li*Math.PI/180,gx=G*Math.sin(th),gy=G*Math.cos(th),sth=Math.sin(th)*3.28084*2.6e-5,wx=w[0]*Math.cos(th),wz=w[1];let vx=v0*Math.cos(ang),vy=v0*Math.sin(ang),vz=0,x=0,y=-shm,z=0,t=0,i=0;const X=[x],Y=[y],Z=[z],V=[v0],T=[t];
   const add=()=>{X.push(x);Y.push(y);Z.push(z);V.push(Math.hypot(vx,vy,vz));T.push(t)};
   while(x<xmax){const rx=vx-wx,rz=vz-wz,vr=Math.sqrt(rx*rx+vy*vy+rz*rz);if(vr<15)break;
-   const acc=k*vr*interp(vr/at.a,MACH,cds);vx-=acc*rx*dt;vy-=(acc*vy+G)*dt;vz-=acc*rz*dt;x+=vx*dt;y+=vy*dt;z+=vz*dt;t+=dt;if(++i%5===0)add()}
+   const acc=k*(1-sth*x)*vr*interp(vr/at.a,MACH,cds);vx-=(acc*rx+gx)*dt;vy-=(acc*vy+gy)*dt;vz-=acc*rz*dt;x+=vx*dt;y+=vy*dt;z+=vz*dt;t+=dt;if(++i%5===0)add()}
   add();return{X,Y,Z,V,T}}
  const xc=cero*YD;let lo=-.02,hi=.1,ang=0;
  if(angFix!==null)ang=angFix;else for(let n=0;n<40;n++){ang=(lo+hi)/2;const s=vol(ang,xc+.05,[0,0]);if(interp(xc,s.X,s.Y)>0)hi=ang;else lo=ang}
- const S=vol(ang,xmaxYd*YD+1,w0);
+ const S=vol(ang,xmaxYd*YD+1,w0,inc);
  return{ang,rho:at.rho,p:at.p,alc:S.X[S.X.length-1],punto(d){const y=interp(d,S.X,S.Y),z=interp(d,S.X,S.Z),v=interp(d,S.X,S.V),t=interp(d,S.X,S.T);
   return{y,v,t,e:.5*M*v*v,moa:Math.atan2(y,d)*10800/Math.PI,lat:Math.atan2(z,d)*10800/Math.PI}}}}
 function comp(vel,dir){const w=vel/3.6,th=dir*Math.PI/180;return[-w*Math.cos(th),-w*Math.sin(th)]}
 const spin=(t,d,der)=>{const m=Math.atan2(1.25*(SG+1.2)*Math.pow(t,1.83)*.0254,d)*10800/Math.PI;return der?m:-m};
 const jump=(wz,der)=>{const m=(.01*SG-.0024*LC+.032)*wz*2.23694;return der?m:-m};
 let CA={};
-function trays(c,vw){const kb=[c.mv,c.cero,c.sh,c.alt,c.temp,c.pres,c.hr].join('|');
- if(CA.kb!==kb){const mva=c.mv*AJ.mv_efectiva_fps/AJ.mv_referencia_fps;CA={kb,t0:tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,[0,0],c.pres,c.hr),ta:tray(mva,c.cero,c.sh,c.alt,c.temp,AJ.factor_cd,[0,0],c.pres,c.hr),w:{}}}
- const kw=vw+'|'+c.dir;if(!CA.w[kw])CA.w[kw]=vw?tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,comp(vw,c.dir),c.pres,c.hr):CA.t0;
+function trays(c,vw){const inc=c.inc||0,kb=[c.mv,c.cero,c.sh,c.alt,c.temp,c.pres,c.hr,inc].join('|');
+ if(CA.kb!==kb){const mva=c.mv*AJ.mv_efectiva_fps/AJ.mv_referencia_fps;CA={kb,t0:tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,[0,0],c.pres,c.hr,DT,450,null,inc),ta:tray(mva,c.cero,c.sh,c.alt,c.temp,AJ.factor_cd,[0,0],c.pres,c.hr,DT,450,null,inc),w:{}}}
+ const kw=vw+'|'+c.dir;if(!CA.w[kw])CA.w[kw]=vw?tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,comp(vw,c.dir),c.pres,c.hr,DT,450,null,inc):CA.t0;
  return{t0:CA.t0,ta:CA.ta,tw:CA.w[kw]}}
 function solve(c,vw,dm){const T=trays(c,vw),p0=T.t0.punto(dm),pw=T.tw.punto(dm),pa=T.ta.punto(dm),[wx,wz]=comp(vw,c.dir);
  const dfr=pw.moa-p0.moa,salto=(vw&&!c.gno)?jump(wz,c.gder):0;let lg=0;
  if(!c.gno){const x0=c.cero*YD;lg=spin(p0.t,dm,c.gder)-spin(T.t0.punto(x0).t,x0,c.gder)}
  return{vert:pa.moa+dfr+salto,lat:pw.lat*c.fv+lg,v:p0.v,t:p0.t,e:p0.e}}
+function solveIncl(c,vw,dm,ang){return solve(Math.abs(ang)>1e-9?Object.assign({},c,{inc:ang}):c,vw,dm)}
 const alClick=(m,c)=>c>0?Math.round(Math.abs(m)/c)*c:Math.abs(m);
 const ladoCorr=l=>l>0?'IZQUIERDA':'DERECHA';
 // ================= APRENDIZAJE CON TUS TIROS (MCO para efectos + Lasso para predecir) =================
@@ -234,11 +240,11 @@ function condFila(f){const d=num(f.distancia_yd),mv=num(f.vel_salida_fps),er=num
   pu:o(f.presion_hpa_usada),hr:o(f.humedad_pct)||0,viento:o(f.viento_usado_kmh)||0,dir:((o(f.viento_desde_deg)??90)%360+360)%360,giro:f.giro_canon||'Derecha',
   er,fh:String(f.fecha_hora||''),lr:o(f['lat_real_moa(+derecha)']),usar:String(f.usar??'1').trim()!=='0',ang:o(f.angulo_tiro_deg)||0,
   fuente:String(f.fuente_viento||'anemometro'),mirA:o(f.mirage_ang_deg),mirH:String(f.mirage_hacia||'').trim(),ses:String(f.fecha_hora||'').slice(0,10),ng:Math.max(1,Math.round(o(f.n_grupo)||1))}}
-function rasgos(c){const ratio=AJ.mv_efectiva_fps/AJ.mv_referencia_fps,f0=AJ.factor_cd,x=c.d*YD,xv=x*Math.cos((c.ang||0)*Math.PI/180),xm=c.d+2,dt=AP.DT;
- // caida a la distancia horizontal (xv), viento y giro a la distancia completa (x)
- const elev=(mv,f)=>-tray(mv*ratio,c.cero,c.sh,c.alt,c.temp,f,[0,0],c.pres,c.hr,dt,xm).punto(xv).moa;
- const e0=elev(c.mv,f0),sv=(elev(c.mv+10,f0)-e0)/10,scd=elev(c.mv,f0*1.1)-e0,t0=tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,[0,0],c.pres,c.hr,dt,xm),p0=t0.punto(x),p0v=t0.punto(xv);
- let pw=p0,pwv=p0v,wz=0;if(c.viento){const w=comp(c.viento,c.dir);wz=w[1];const tw=tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,w,c.pres,c.hr,dt,xm);pw=tw.punto(x);pwv=tw.punto(xv)}
+function rasgos(c){const ratio=AJ.mv_efectiva_fps/AJ.mv_referencia_fps,f0=AJ.factor_cd,x=c.d*YD,inc=c.ang||0,xm=c.d+2,dt=AP.DT;
+ // tiro inclinado: misma integracion del libro (Litz cap. 4), todo a la distancia real (x)
+ const elev=(mv,f)=>-tray(mv*ratio,c.cero,c.sh,c.alt,c.temp,f,[0,0],c.pres,c.hr,dt,xm,null,inc).punto(x).moa;
+ const e0=elev(c.mv,f0),sv=(elev(c.mv+10,f0)-e0)/10,scd=elev(c.mv,f0*1.1)-e0,t0=tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,[0,0],c.pres,c.hr,dt,xm,null,inc),p0=t0.punto(x),p0v=p0;
+ let pw=p0,pwv=p0v,wz=0;if(c.viento){const w=comp(c.viento,c.dir);wz=w[1];const tw=tray(c.mv,c.cero,c.sh,c.alt,c.temp,1,w,c.pres,c.hr,dt,xm,null,inc);pw=tw.punto(x);pwv=pw}
  const gno=c.giro==='No considerar',gder=c.giro==='Derecha',salto=(c.viento&&!gno)?jump(wz,gder):0;let lg=0;
  if(!gno){const x0=c.cero*YD;lg=spin(p0.t,x,gder)-spin(t0.punto(x0).t,x0,gder)}
  return{eb:e0-(pwv.moa-p0v.moa)-salto,sv,scd,wv:-pw.lat,wg:-lg,lb:-pw.lat-lg}}
@@ -371,7 +377,7 @@ let REG=[],U=null;
 const ls={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
 function cfg(){const c={};for(const k in DEF)c[k]=$(k).value;return c}
 function readCfg(){const g=k=>{const x=num($(k).value);if(!isFinite(x))throw k;return x},o=(k,lo,hi)=>{const s=$(k).value.trim();if(!s)return null;const x=num(s);if(!(x>=lo&&x<=hi))throw k;return x};
- const gi=$('giro').value,fuente=$('fuente').value,c={mv:g('mv'),cero:g('cero'),sh:g('sh'),alt:g('alt'),temp:g('temp'),clic:g('clic'),viento:g('viento'),peak:g('peak')||0,dir:((g('dir')%360)+360)%360,fv:g('fv'),pres:o('pres',300,1100),hr:o('hr',0,100)||0,baja:o('baja',0,300),gder:gi==='Derecha',gno:gi==='No considerar',giro:gi,ang:o('ang',-60,60)||0,fuente};
+ const gi=$('giro').value,fuente=$('fuente').value,c={mv:g('mv'),cero:g('cero'),sh:g('sh'),alt:g('alt'),temp:g('temp'),clic:g('clic'),viento:g('viento'),peak:g('peak')||0,dir:((g('dir')%360)+360)%360,fv:g('fv'),pres:o('pres',300,1100),hr:o('hr',0,100)||0,baja:o('baja',0,300),gder:gi==='Derecha',gno:gi==='No considerar',giro:gi,ang:o('ang',-90,90)||0,fuente};
  c.anem={viento:c.viento,peak:c.peak,baja:c.baja,dir:c.dir};
  // Aire: presion a nivel del mar (QNH) -> de estacion; altitud de densidad (Kestrel) -> presion equivalente con tu temperatura y humedad
  c.ptipo=$('ptipo').value;c.presIn=c.pres;c.da=o('da',-1000,6000);c.disp=o('disp',0.02,3)??0.35;
@@ -393,10 +399,10 @@ function compute(){
   if(dm>T.t0.alc){U=null;$('oVert').textContent='–';$('oAviso').textContent='El slug no llega a esa distancia.';updPred();match();return}
   // Regla del fusilero: la caida se calcula a la distancia horizontal (telemetro x cos angulo); el viento, a la distancia completa.
   const cosA=Math.cos(c.ang*Math.PI/180),dyh=dyd*cosA,dmh=dm*cosA;
-  const sol=vk=>{const x=solve(c,vk,dm);if(Math.abs(c.ang)>1e-9){x.vert=solve(c,vk,dmh).vert}return x};
+  const sol=vk=>solveIncl(c,vk,dm,c.ang);
   const[bj,bEst]=bajaEf(c),r=sol(c.viento),rp=c.peak>0?sol(c.peak):null,rb=bj!=null?sol(bj):null;
-  const loc=apLocal(c,dyh);for(const[rr_,vk]of[[r,c.viento],[rp,c.peak],[rb,bj]]){if(!rr_)continue;const ce=apCorr(c,vk,dyh)[0],cl=apCorr(c,vk,dyd)[1];rr_.ae=ce;rr_.al=cl;rr_.vert-=ce+loc;rr_.lat-=cl}
-  $('oAng').textContent=Math.abs(c.ang)>1e-9?'Caída calculada a '+fmt(dyh,1)+' yd horizontales ('+fmt(dyd,1)+' × cos '+fmt(c.ang,1)+'° = '+fmt(cosA,4)+'). El viento usa los '+fmt(dyd,1)+' yd completos.':'';
+  const loc=apLocal(c,dyd)*cosA;for(const[rr_,vk]of[[r,c.viento],[rp,c.peak],[rb,bj]]){if(!rr_)continue;const ce=apCorr(c,vk,dyd)[0]*cosA,cl=apCorr(c,vk,dyd)[1];rr_.ae=ce;rr_.al=cl;rr_.vert-=ce+loc;rr_.lat-=cl}
+  $('oAng').textContent=Math.abs(c.ang)>1e-9?'Tiro inclinado '+fmt(c.ang,1)+'° ('+(c.ang>0?'subida':'bajada')+') · cálculo de Applied Ballistics (Litz, cap. 4): gravedad hacia la mira g × cos = '+fmt(cosA,3)+' g, g × sen frena o ayuda al balín, y el aire cambia de densidad con la altura ('+(c.ang>0?'+':'')+fmt(dyd*Math.sin(c.ang*Math.PI/180)*0.9144,1)+' m al blanco). Viento y giro a los '+fmt(dyd,1)+' yd reales.'+(Math.abs(c.ang)>60?' Sobre 60° casi no hay caída: el balín sigue la línea del cañón y pega arriba.':''):'';
   $('oVert').textContent=fmt(alClick(r.vert,c.clic),2)+' MOA '+(r.vert<0?'↓':'↑');
   $('oClk').textContent=(c.clic>0?Math.round(Math.abs(r.vert)/c.clic):0)+' clicks · exacto '+fmt(Math.abs(r.vert),2)+' MOA'+(Math.abs(loc)>=.01?' · por tus tiros '+(loc>0?'+':'−')+fmt(Math.abs(loc),2):'')+misTiros(c,dyh);
   $('oBaja').textContent=rb?latTxt(rb.lat,c.clic)+(bEst?' ≈':''):'–';$('oMed').textContent=latTxt(r.lat,c.clic);$('oPeak').textContent=rp?latTxt(rp.lat,c.clic):'–';
@@ -469,7 +475,7 @@ function tabla(){if(!U){$('msg').textContent='Completa datos válidos primero.';
  $('tTit').textContent='Viento baja '+(U.bj!=null?fmt(U.bj,0):'–')+' / media '+fmt(c.viento,0)+' / alta '+fmt(c.peak,0)+' km/h desde '+fmt(c.dir,0)+'°, factor '+fmt(c.fv,2)+'. Corrección en MOA al click; lado = hacia dónde girar.';
  let h='<tr><th>yd</th><th>Caída</th><th>clicks</th><th>Viento baja</th><th>Viento media</th><th>Viento alta</th><th>fps</th><th>J</th><th>s</th></tr>';
  const lt=l=>{const v=alClick(l,c.clic);return v===0?'0,00':fmt(v,2)+' '+(l>0?'IZQ':'DER')};
- const bj=U.bj;for(let d=10;d*YD<=Math.min(T.t0.alc,500*YD);d+=10){const r=solve(c,c.viento,d*YD),rp=c.peak>0?solve(c,c.peak,d*YD):null,rb=bj!=null?solve(c,bj,d*YD):null;
+ const bj=U.bj;for(let d=10;d*YD<=Math.min(T.t0.alc,500*YD);d+=10){const r=solveIncl(c,c.viento,d*YD,c.ang),rp=c.peak>0?solveIncl(c,c.peak,d*YD,c.ang):null,rb=bj!=null?solveIncl(c,bj,d*YD,c.ang):null;
   h+='<tr><td>'+d+'</td><td>'+fmt(alClick(r.vert,c.clic),2)+(r.vert<0?' ↓':' ↑')+'</td><td>'+Math.round(Math.abs(r.vert)/c.clic)+'</td><td>'+(rb?lt(rb.lat):'–')+'</td><td>'+lt(r.lat)+'</td><td>'+(rp?lt(rp.lat):'–')+'</td><td>'+fmt(r.v/FPS,0)+'</td><td>'+fmt(r.e,1)+'</td><td>'+fmt(r.t,2)+'</td></tr>'}
  $('tb').innerHTML=h;$('vTabla').classList.add('on')}
 function verReg(){$('rTit').textContent=REG.length+' tiros guardados en este teléfono. Exporta el CSV para pasarlos al computador.';
@@ -481,10 +487,10 @@ function match(){const el=$('mt'),s=$('mDist').value,uni=$('unidad').value;ls.se
  if(!U){el.innerHTML='';$('mInfo').textContent='Revisa los datos de viento y aire: deben ser números.';return}
  const c=U.c,T=trays(c,c.viento),[lo,hi]=AJ.rango_valido_yd,ck=m=>c.clic>0?Math.round(Math.abs(m)/c.clic):0;
  const lt=r=>{if(!r)return'–';const v=alClick(r.lat,c.clic);return v===0?'0,00<br><span class="small">0 cl</span>':fmt(v,2)+' '+(r.lat>0?'I':'D')+'<br><span class="small">'+ck(r.lat)+' cl</span>'};
- const one=(vk,dyd,dm,ang)=>{if(vk==null)return null;const k=Math.cos(ang*Math.PI/180),r=solve(c,vk,dm);if(Math.abs(ang)>1e-9)r.vert=solve(c,vk,dm*k).vert;
-  const ce=apCorr(c,vk,dyd*k)[0],cl=apCorr(c,vk,dyd)[1];r.vert-=ce+apLocal(c,dyd*k);r.lat-=cl;return r};
+ const one=(vk,dyd,dm,ang)=>{if(vk==null)return null;const k=Math.cos(ang*Math.PI/180),r=solveIncl(c,vk,dm,ang);
+  const ce=apCorr(c,vk,dyd)[0]*k,cl=apCorr(c,vk,dyd)[1];r.vert-=ce+apLocal(c,dyd)*k;r.lat-=cl;return r};
  let h='<tr><th style="text-align:left">'+uni+'</th><th>Caída</th><th class="g">Baja</th><th class="b">Media</th><th class="a">Alta</th></tr>',fuera=false;
- for(const[d,a0]of tk){const ang=a0===null||!isFinite(a0)?c.ang:a0,dyd=uni==='yd'?d:d/YD,dm=dyd*YD,f=dyd<lo||dyd>hi;fuera=fuera||f;
+ for(const[d,a0]of tk){const ang=a0===null||!isFinite(a0)?c.ang:Math.max(-90,Math.min(90,a0)),dyd=uni==='yd'?d:d/YD,dm=dyd*YD,f=dyd<lo||dyd>hi;fuera=fuera||f;
   if(dm>T.t0.alc){h+='<tr><td style="text-align:left">'+fmt(d,0)+'</td><td colspan="4">no llega</td></tr>';continue}
   const rm=one(c.viento,dyd,dm,ang),rb=one(U.bj,dyd,dm,ang),ra=c.peak>0?one(c.peak,dyd,dm,ang):null;
   h+='<tr><td style="text-align:left">'+fmt(d,0)+(f?'*':'')+(Math.abs(ang)>1e-9?'<br><span class="small">'+(ang>0?'+':'')+fmt(ang,0)+'°</span>':'')+'</td><td>'+fmt(alClick(rm.vert,c.clic),2)+(rm.vert<0?' ↓':' ↑')+'<br><span class="small">'+ck(rm.vert)+' cl · '+fmt(rm.t,2)+' s</span></td><td class="g">'+lt(rb)+'</td><td class="b">'+lt(rm)+'</td><td class="a">'+lt(ra)+'</td></tr>'}
